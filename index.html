@@ -110,7 +110,6 @@
             if (oldScript) oldScript.remove();
             const script = document.createElement('script');
             script.id = 'gviz-script';
-            // เปลี่ยน headers=1 เป็น headers=0 เพื่อให้ดึงแถวบนสุดมาอ่านได้
             script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json;responseHandler:handleGoogleSheet&headers=0&t=${new Date().getTime()}`;
             script.onerror = () => { showError('ไม่สามารถเชื่อมต่อ Google Sheets ได้ โปรดตรวจสอบอินเทอร์เน็ต'); };
             document.head.appendChild(script);
@@ -119,51 +118,61 @@
         function handleGoogleSheet(response) {
             if (!response || response.status === 'error') { showError('เกิดข้อผิดพลาดในการดึงข้อมูล'); return; }
             try {
-                const rows = response.table.rows;
+                // แก้เผ็ด Google: จับข้อมูลทุกอย่าง (ทั้ง Header และ Rows) มารวมเป็นตาราง 2 มิติเพียวๆ
+                const rawMatrix = [];
                 
+                const cols = response.table.cols;
+                let hasHeaderData = false;
+                const headerRow = cols.map(c => {
+                    let val = (c && c.label) ? c.label.toString().trim() : '';
+                    if (val && !val.toLowerCase().startsWith('col_')) hasHeaderData = true;
+                    return val;
+                });
+                if (hasHeaderData) rawMatrix.push(headerRow);
+                
+                response.table.rows.forEach(row => {
+                    rawMatrix.push(row.c.map(cell => {
+                        if (!cell) return '';
+                        if (cell.f) return cell.f.toString().trim();
+                        return (cell.v !== null && cell.v !== undefined) ? cell.v.toString().trim() : '';
+                    }));
+                });
+
                 let genderRowIdx = -1;
                 let nameRowIdx = -1;
 
-                // ค้นหาอัตโนมัติว่าแถวไหนคือ "เพศ" แถวไหนคือ "วันที่"
-                for(let i=0; i < Math.min(10, rows.length); i++) {
-                    let firstCell = rows[i].c[0];
-                    let firstVal = firstCell ? (firstCell.f || firstCell.v || '').toString().trim() : '';
-                    if(firstVal === 'เพศ') genderRowIdx = i;
-                    if(firstVal === 'วันที่') nameRowIdx = i;
+                // ค้นหาแบบยืดหยุ่นสุดๆ
+                for(let i=0; i < Math.min(10, rawMatrix.length); i++) {
+                    let firstVal = rawMatrix[i][0] || '';
+                    if(firstVal.includes('เพศ') || firstVal.toUpperCase().includes('SEX')) genderRowIdx = i;
+                    if(firstVal.includes('วัน') || firstVal.toUpperCase().includes('DATE')) nameRowIdx = i;
                 }
 
+                // ถ้าหาไม่เจอจริงๆ ให้เหมาว่าแถวแรก=เพศ, แถวสอง=ชื่อ
                 if(nameRowIdx === -1) {
-                    showError('ไม่พบแถวที่ขึ้นต้นด้วยคำว่า "วันที่" โปรดตรวจสอบรูปแบบ Sheet');
-                    return;
+                    genderRowIdx = 0;
+                    nameRowIdx = 1;
                 }
 
-                const genders = genderRowIdx !== -1 ? rows[genderRowIdx].c : [];
-                const names = rows[nameRowIdx].c;
+                const genders = genderRowIdx !== -1 ? rawMatrix[genderRowIdx] : [];
+                const names = rawMatrix[nameRowIdx];
 
                 const runners = [];
                 const runnerIndices = [];
                 const maleList = [];
                 const femaleList = [];
                 
-                // อ่านข้อมูลชื่อและเพศทีละคอลัมน์
                 for(let i = 1; i < names.length; i++) {
-                    if(names[i] && names[i].v) {
-                        let rawName = names[i].v.toString().trim();
-                        if(rawName !== '') {
-                            runners.push(rawName);
-                            runnerIndices.push(i);
-                            
-                            // เช็คเพศจากแถวบน
-                            let gender = '';
-                            if(genderRowIdx !== -1 && genders[i] && genders[i].v) {
-                                gender = genders[i].v.toString().trim().toUpperCase();
-                            }
-                            
-                            if(gender === 'M' || gender === 'ช') {
-                                maleList.push(rawName.toUpperCase());
-                            } else if(gender === 'F' || gender === 'ญ') {
-                                femaleList.push(rawName.toUpperCase());
-                            }
+                    let rawName = names[i] || '';
+                    if(rawName !== '') {
+                        runners.push(rawName);
+                        runnerIndices.push(i);
+                        
+                        let gender = genders[i] ? genders[i].toUpperCase() : '';
+                        if(gender === 'M' || gender.includes('ช')) {
+                            maleList.push(rawName.toUpperCase());
+                        } else if(gender === 'F' || gender.includes('ญ')) {
+                            femaleList.push(rawName.toUpperCase());
                         }
                     }
                 }
@@ -173,24 +182,23 @@
                 let runnerTotals = {};
                 runners.forEach(r => runnerTotals[r] = 0);
                 
-                // วนลูปอ่านข้อมูลตัวเลข (เริ่มจากแถวถัดจากแถววันที่)
-                for(let i = nameRowIdx + 1; i < rows.length; i++) {
-                    let row = rows[i];
-                    let cellDate = row.c[0];
-                    let dateVal = cellDate ? (cellDate.f || cellDate.v || '').toString().trim() : '';
+                for(let i = nameRowIdx + 1; i < rawMatrix.length; i++) {
+                    let row = rawMatrix[i];
+                    let dateVal = row[0] || '';
                     
-                    // กรองคำที่ไม่ต้องการให้โชว์บนแดชบอร์ด (ข้ามแถวทิ้งไปเลย)
                     let skipWords = ['รวม', 'total', 'sum', 'ซ่อน', 'hide', 'หมายเหตุ', 'note'];
-                    if (!dateVal || dateVal === '' || skipWords.some(word => dateVal.toLowerCase().includes(word))) continue;
+                    if (!dateVal || skipWords.some(word => dateVal.toLowerCase().includes(word))) continue;
                     
                     let rowData = { date: dateVal };
                     let hasDataInRow = false;
                     
                     runners.forEach((runner, idx) => {
                         let originalIndex = runnerIndices[idx];
-                        let cell = row.c[originalIndex];
-                        let valNum = cell ? parseFloat(cell.v !== null && cell.v !== undefined ? cell.v : 0) : 0;
+                        let valRaw = row[originalIndex] || '0';
+                        // แปลงค่า เผื่อมีการพิมพ์จุลภาค
+                        let valNum = parseFloat(valRaw.replace(/,/g, ''));
                         if (isNaN(valNum)) valNum = 0;
+                        
                         rowData[runner] = valNum;
                         if (valNum > 0) hasDataInRow = true;
                         runnerTotals[runner] += valNum;
@@ -201,7 +209,10 @@
                 }
                 
                 renderDashboard(cleanData, runners, runnerTotals, totalDistance, maleList, femaleList);
-            } catch (err) { console.error(err); showError('เกิดข้อผิดพลาดในการประมวลผลข้อมูล'); }
+            } catch (err) { 
+                console.error(err); 
+                showError('เกิดข้อผิดพลาดในการประมวลผลข้อมูล โปรดตรวจสอบรูปแบบ Sheet'); 
+            }
         }
 
         function showError(msg) {
@@ -221,14 +232,10 @@
             document.getElementById('kpi-total-runners').innerText = runners.length;
             document.getElementById('last-updated').innerText = `อัปเดตล่าสุด: ${new Date().toLocaleTimeString('th-TH')}`;
 
-            // จัดเรียงนักวิ่งตามระยะทาง
             const sortedRunners = [...runners].sort((a, b) => runnerTotals[b] - runnerTotals[a]);
-            
-            // แยกกลุ่มชายหญิง
             const maleRunners = sortedRunners.filter(r => maleList.includes(r.toUpperCase()));
             const femaleRunners = sortedRunners.filter(r => femaleList.includes(r.toUpperCase()));
 
-            // วาดกราฟรวม
             if (barChartInstance) barChartInstance.destroy();
             barChartInstance = new Chart(document.getElementById('barChart').getContext('2d'), {
                 type: 'bar',
@@ -236,7 +243,6 @@
                 options: { responsive: true, plugins: { legend: { display: false } } }
             });
 
-            // วาดกราฟชาย
             if (maleChartInstance) maleChartInstance.destroy();
             maleChartInstance = new Chart(document.getElementById('maleBarChart').getContext('2d'), {
                 type: 'bar',
@@ -244,7 +250,6 @@
                 options: { responsive: true, plugins: { legend: { display: false } } }
             });
 
-            // วาดกราฟหญิง
             if (femaleChartInstance) femaleChartInstance.destroy();
             femaleChartInstance = new Chart(document.getElementById('femaleBarChart').getContext('2d'), {
                 type: 'bar',
@@ -252,7 +257,6 @@
                 options: { responsive: true, plugins: { legend: { display: false } } }
             });
 
-            // วาดกราฟเส้น
             const lineDatasets = runners.map((runner, index) => ({
                 label: runner, data: cleanData.map(row => row[runner]), borderColor: colors[index % colors.length], backgroundColor: colors[index % colors.length] + '30', tension: 0.3, borderWidth: 2, pointRadius: 3
             }));
@@ -262,7 +266,6 @@
                 options: { responsive: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'Prompt' } } } } }
             });
 
-            // สร้างตาราง
             let headHTML = '<tr><th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-200">วันที่</th>';
             runners.forEach(runner => { headHTML += `<th class="px-4 py-3 text-center text-xs font-bold text-gray-600">${runner}</th>`; });
             document.getElementById('table-head').innerHTML = headHTML + '</tr>';
