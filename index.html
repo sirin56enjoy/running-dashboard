@@ -78,10 +78,10 @@
             </div>
         </div>
 
+        <!-- นำตารางข้อมูลกลับมา และเอาข้อความสีแดงออกแล้ว -->
         <div class="bg-white rounded-xl shadow overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center bg-gray-50">
                 <h2 class="text-lg font-bold text-gray-700">ตารางสถิติรายวัน</h2>
-                <span class="text-xs font-medium text-red-500 bg-red-50 px-2 py-1 rounded-full mt-2 md:mt-0">*พิมพ์ "ซ่อน" ในช่องวันที่ เพื่อไม่ให้แถวนั้นโชว์ในกราฟ</span>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200" id="data-table">
@@ -90,6 +90,7 @@
                 </table>
             </div>
         </div>
+
     </div>
 
     <script>
@@ -106,19 +107,13 @@
         function refreshData() {
             document.getElementById('loading').style.display = 'flex';
             document.getElementById('dashboard-content').classList.add('hidden');
-            
-            // ดึงข้อมูลตรงๆ แบบ CSV (ไม่ผ่าน gviz ให้ระบบเดามั่ว)
             const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&t=${new Date().getTime()}`;
             
             Papa.parse(csvUrl, {
                 download: true,
-                header: false, // อ่านเป็นตาราง 2 มิติเพียวๆ
-                complete: function(results) {
-                    processData(results.data);
-                },
-                error: function(err) {
-                    showError('ไม่สามารถเชื่อมต่อข้อมูลได้ โปรดตรวจสอบการแชร์ลิงก์แบบ "ทุกคนที่มีลิงก์"');
-                }
+                header: false,
+                complete: function(results) { processData(results.data); },
+                error: function(err) { showError('ไม่สามารถเชื่อมต่อข้อมูลได้'); }
             });
         }
 
@@ -127,18 +122,13 @@
                 let genderRowIdx = -1;
                 let nameRowIdx = -1;
 
-                // ค้นหาแถว เพศ และ วันที่
                 for(let i=0; i < Math.min(10, matrix.length); i++) {
                     let firstVal = (matrix[i][0] || '').toString().trim();
                     if(firstVal.includes('เพศ') || firstVal.toUpperCase().includes('SEX')) genderRowIdx = i;
                     if(firstVal.includes('วัน') || firstVal.toUpperCase().includes('DATE')) nameRowIdx = i;
                 }
 
-                // ถ้าพิมพ์หัวตารางผิดหรือหาไม่เจอ ให้ยึดแถวแรกเป็นเพศ แถวสองเป็นชื่อ
-                if(nameRowIdx === -1) {
-                    genderRowIdx = 0;
-                    nameRowIdx = 1;
-                }
+                if(nameRowIdx === -1) { genderRowIdx = 0; nameRowIdx = 1; }
 
                 const genders = genderRowIdx !== -1 ? matrix[genderRowIdx] : [];
                 const names = matrix[nameRowIdx];
@@ -148,7 +138,6 @@
                 const maleList = [];
                 const femaleList = [];
                 
-                // อ่านข้อมูลชื่อและแยกเพศ (ข้ามคอลัมน์ A)
                 for(let i = 1; i < names.length; i++) {
                     let rawName = (names[i] || '').trim();
                     if(rawName !== '') {
@@ -169,13 +158,11 @@
                 let runnerTotals = {};
                 runners.forEach(r => runnerTotals[r] = 0);
                 
-                // วนลูปอ่านข้อมูลตัวเลข
                 for(let i = nameRowIdx + 1; i < matrix.length; i++) {
                     let row = matrix[i];
-                    if (!row || row.length === 0 || (row.length === 1 && !row[0])) continue; // ข้ามแถวว่างตอนท้ายสุด
+                    if (!row || row.length === 0 || (row.length === 1 && !row[0])) continue;
 
                     let dateVal = (row[0] || '').trim();
-                    
                     let skipWords = ['รวม', 'total', 'sum', 'ซ่อน', 'hide', 'หมายเหตุ', 'note'];
                     if (!dateVal || skipWords.some(word => dateVal.toLowerCase().includes(word))) continue;
                     
@@ -198,10 +185,7 @@
                 }
                 
                 renderDashboard(cleanData, runners, runnerTotals, totalDistance, maleList, femaleList);
-            } catch (err) { 
-                console.error(err); 
-                showError('รูปแบบข้อมูลใน Sheet ไม่ถูกต้อง'); 
-            }
+            } catch (err) { console.error(err); showError('รูปแบบข้อมูลใน Sheet ไม่ถูกต้อง'); }
         }
 
         function showError(msg) {
@@ -255,6 +239,7 @@
                 options: { responsive: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'Prompt' } } } } }
             });
 
+            // นำโค้ดสำหรับสร้างตารางกลับมา
             let headHTML = '<tr><th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-200 whitespace-nowrap">วันที่</th>';
             runners.forEach(runner => { headHTML += `<th class="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase">${runner}</th>`; });
             document.getElementById('table-head').innerHTML = headHTML + '</tr>';
