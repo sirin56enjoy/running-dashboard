@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard สถิติการวิ่ง</title>
+    <!-- โหลด Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- โหลด Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- โหลด PapaParse -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -78,9 +81,9 @@
             </div>
         </div>
 
-        <!-- นำตารางข้อมูลกลับมา และเอาข้อความสีแดงออกแล้ว -->
+        <!-- ตารางข้อมูลรายวัน (เอาป้ายสีแดงออกแล้ว) -->
         <div class="bg-white rounded-xl shadow overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center bg-gray-50">
+            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                 <h2 class="text-lg font-bold text-gray-700">ตารางสถิติรายวัน</h2>
             </div>
             <div class="overflow-x-auto">
@@ -90,7 +93,6 @@
                 </table>
             </div>
         </div>
-
     </div>
 
     <script>
@@ -239,7 +241,6 @@
                 options: { responsive: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'Prompt' } } } } }
             });
 
-            // นำโค้ดสำหรับสร้างตารางกลับมา
             let headHTML = '<tr><th class="px-4 py-3 text-left text-xs font-bold text-gray-600 bg-gray-200 whitespace-nowrap">วันที่</th>';
             runners.forEach(runner => { headHTML += `<th class="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase">${runner}</th>`; });
             document.getElementById('table-head').innerHTML = headHTML + '</tr>';
